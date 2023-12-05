@@ -7,10 +7,9 @@ import math
 import sys
 from typing import Iterable, Optional
 
-import torch
-
 from timm.data import Mixup
-from timm.utils import accuracy, ModelEma
+from timm.utils import ModelEma, accuracy
+import torch
 
 from losses import DistillationLoss
 import utils
@@ -27,6 +26,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 10
     
+    print(f'Epoch {epoch} starts training!')
     if args.cosub:
         criterion = torch.nn.BCEWithLogitsLoss()
         
