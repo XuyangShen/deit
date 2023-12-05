@@ -61,7 +61,6 @@ class LinearAttention(nn.Module):
             self.lrpe = Lrpe(
                 dim=dim,
                 num_heads=self.num_heads,
-                dims=[-2, -3],
             )
         self.layer_norm = nn.LayerNorm(inner_dim)
         self.act_fun = get_activation_fn(act_fun)
@@ -71,19 +70,14 @@ class LinearAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.num_heads), qkv)
         
         if self.use_lrpe:
-            scale = q.shape[-1] ** 0.5
-            # lrpe
-            q = rearrange(q, 'b h (r c) d -> b h r c d', r=self.num_row_patches)
-            k = rearrange(k, 'b h (r c) d -> b h r c d', r=self.num_row_patches)
             q = self.lrpe(q)
             k = self.lrpe(k)
-            # scale for stable training
-            q = rearrange(q, 'b h r c d -> b h (r c) d') / scale
-            k = rearrange(k, 'b h r c d -> b h (r c) d') / scale
+            
+        scale = q.shape[-1] ** 0.5
 
         # compute
-        kv = torch.matmul(k.transpose(-1, -2), v)
-        output = torch.matmul(q, kv)
+        kv = torch.matmul(k.transpose(-1, -2) / scale, v)
+        output = torch.matmul(q / scale, kv)
         output = rearrange(output, 'b h n d -> b n (h d)')
         output = self.layer_norm(output)
         
