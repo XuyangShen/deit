@@ -45,7 +45,7 @@ class Vit(nn.Module):
         act_fun="1+elu",
         bias=False,
         use_lrpe=True,
-        drop_block_rate=None
+        theta_type=1,
     ):
         super().__init__()
         # get local varables
@@ -53,7 +53,7 @@ class Vit(nn.Module):
         # print params
         print_params(**params)
         
-        image_height, image_width = pair(img_size)
+        image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
         
         patch_dim = channels * patch_height * patch_width
@@ -87,6 +87,7 @@ class Vit(nn.Module):
                     act_fun=act_fun,
                     bias=bias,
                     use_lrpe=use_lrpe,
+                    theta_type=theta_type,
                 )
             )
 

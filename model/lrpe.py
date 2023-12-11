@@ -7,7 +7,7 @@ from .helpers import print_module, print_params
 
 
 class Lrpe(nn.Module):
-    def __init__(self, dim, num_heads=8):
+    def __init__(self, dim, num_heads=8, theta_type=1):
         super().__init__()
         # get local varables
         params = locals()
@@ -16,7 +16,13 @@ class Lrpe(nn.Module):
 
         # mix lrpe/rope
         self.num_heads = num_heads
-        self.theta = nn.Parameter(10000**(-2 / dim * torch.arange(dim // 4)).reshape(num_heads, -1), requires_grad=False)
+        self.theta_type = theta_type
+        if self.theta_type == 2:
+            theta = 10000**(-2 / dim * torch.arange(dim // 2))
+            self.theta_row = nn.Parameter(theta[:dim // 4].reshape(num_heads, -1), requires_grad=False)
+            self.theta_col = nn.Parameter(theta[dim // 4:].reshape(num_heads, -1), requires_grad=False)
+        else:
+            self.theta = nn.Parameter(10000**(-2 / dim * torch.arange(dim // 4)).reshape(num_heads, -1), requires_grad=False)
         self.index = torch.empty(0)
         self.cos = torch.empty(0)
         self.sin = torch.empty(0)
@@ -45,9 +51,12 @@ class Lrpe(nn.Module):
             r = int(n ** 0.5)
             col = self.index // r
             row = self.index % r
-            index = col + row
-
-            theta = torch.stack([index * self.theta.unsqueeze(1), index * self.theta.unsqueeze(1)], dim=-1).reshape(self.num_heads, self.index.shape[1], -1)
+            if self.theta_type == 2:
+                theta = col * self.theta_col.unsqueeze(1) + row * self.theta_row.unsqueeze(1)
+                theta = torch.stack([theta, theta], dim=-1).reshape(self.num_heads, self.index.shape[1], -1)
+            else:
+                index = col + row
+                theta = torch.stack([index * self.theta.unsqueeze(1), index * self.theta.unsqueeze(1)], dim=-1).reshape(self.num_heads, self.index.shape[1], -1)
             self.sin = torch.sin(theta)
             self.cos = torch.cos(theta)
         # (-q1, -q3), (q0, q2) -> (-q1, q0, -q3, q2)

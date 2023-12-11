@@ -32,6 +32,7 @@ class LinearAttention(nn.Module):
         act_fun="swish",
         bias=False,
         use_lrpe=True,
+        theta_type=1,
     ):
         super().__init__()
         # get local varables
@@ -61,6 +62,7 @@ class LinearAttention(nn.Module):
             self.lrpe = Lrpe(
                 dim=dim,
                 num_heads=self.num_heads,
+                theta_type=theta_type,
             )
         self.layer_norm = nn.LayerNorm(inner_dim)
         self.act_fun = get_activation_fn(act_fun)
@@ -105,6 +107,7 @@ class Block(nn.Module):
         act_fun="swish",
         bias=False,
         use_lrpe=True,
+        theta_type=1,
     ):
         super().__init__()
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -119,6 +122,7 @@ class Block(nn.Module):
             act_fun=act_fun,
             bias=bias,
             use_lrpe=use_lrpe,
+            theta_type=theta_type,
         )
         self.feature_mixer = GLU(dim, glu_dim, act_fun, bias)
         self.token_norm = get_norm_fn(norm_type)(dim)
