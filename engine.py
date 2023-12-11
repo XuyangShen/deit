@@ -4,6 +4,7 @@
 Train and eval functions used in main.py
 """
 import math
+import logging
 import sys
 from typing import Iterable, Optional
 
@@ -13,6 +14,8 @@ import torch
 
 from losses import DistillationLoss
 import utils
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
@@ -24,9 +27,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
-    print_freq = 10
+    print_freq = 50
     
-    print(f'Epoch {epoch} starts training!')
+    logging.info(f'Epoch {epoch} starts training!')
     if args.cosub:
         criterion = torch.nn.BCEWithLogitsLoss()
         
@@ -43,7 +46,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
         if args.bce_loss:
             targets = targets.gt(0.0).type(targets.dtype)
          
-        with torch.cuda.amp.autocast():
+        with torch.cuda.amp.autocast(enabled=True, dtype=torch.bfloat16):
             outputs = model(samples)
             if not args.cosub:
                 loss = criterion(samples, outputs, targets)
@@ -57,7 +60,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
         loss_value = loss.item()
 
         if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
+            logging.error("Loss is {}, stopping training".format(loss_value))
             sys.exit(1)
 
         optimizer.zero_grad()
@@ -94,7 +97,7 @@ def evaluate(data_loader, model, device):
         target = target.to(device, non_blocking=True)
 
         # compute output
-        with torch.cuda.amp.autocast():
+        with torch.cuda.amp.autocast(dtype=torch.bfloat16):
             output = model(images)
             loss = criterion(output, target)
 

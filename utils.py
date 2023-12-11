@@ -10,6 +10,8 @@ import os
 import time
 from collections import defaultdict, deque
 import datetime
+import socket
+import subprocess
 
 import torch
 import torch.distributed as dist
@@ -212,27 +214,74 @@ def save_on_master(*args, **kwargs):
     if is_main_process():
         torch.save(*args, **kwargs)
 
+def get_ip():
+    hostname = socket.gethostname()
+    ip = socket.gethostbyname(hostname)
+
+    return ip
 
 def init_distributed_mode(args):
+
+    # 本地多卡
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
+        # single gpu
+        if args.world_size == 1:
+            args.distributed = False
+            return
         args.gpu = int(os.environ['LOCAL_RANK'])
-    elif 'SLURM_PROCID' in os.environ:
-        args.rank = int(os.environ['SLURM_PROCID'])
-        args.gpu = args.rank % torch.cuda.device_count()
-    else:
-        print('Not using distributed mode')
-        args.distributed = False
+        args.distributed = True
+        torch.cuda.set_device(args.gpu)
+        args.dist_backend = 'nccl'
+        print(f'distributed init (rank {args.rank}): {args.dist_url}')
+        print(args.dist_backend)
+        print(args.dist_url)
+        print(args.world_size)
+        print(args.rank)
+        torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+                                            world_size=args.world_size, rank=args.rank)
+        torch.distributed.barrier()
+        setup_for_distributed(args.rank == 0)
+
         return
 
+    port = str(8879)
+    proc_id = int(os.environ['SLURM_PROCID'])
+    local_rank = proc_id % torch.cuda.device_count()
+    ntasks = int(os.environ['SLURM_NTASKS'])
+    node_list = os.environ['SLURM_NODELIST']
+    hostnames = subprocess.check_output(
+        ["scontrol", "show", "hostnames", node_list]
+    )
+    addr = hostnames.split()[0].decode("utf-8")
+    os.environ['MASTER_PORT'] = port
+    os.environ['MASTER_ADDR'] = addr
+    os.environ['WORLD_SIZE'] = str(ntasks)
+    os.environ['RANK'] = str(proc_id)
+    os.environ['LOCAL_RANK'] = str(local_rank)
+    
+    if 'SLURM_PROCID' in os.environ:
+        rank = int(os.environ['SLURM_PROCID'])
+        gpu = rank % torch.cuda.device_count()
+        print(f"SLURM {gpu}")
+    args.rank = int(os.environ["RANK"])
+    args.world_size = int(os.environ['WORLD_SIZE'])
+    args.gpu = int(os.environ['LOCAL_RANK'])
     args.distributed = True
-
-    torch.cuda.set_device(args.gpu)
-    args.dist_backend = 'nccl'
-    print('| distributed init (rank {}): {}'.format(
-        args.rank, args.dist_url), flush=True)
-    torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+    torch.cuda.set_device(local_rank)
+    args.dist_backend = "nccl"
+    host_addr_full = 'tcp://' + addr + ':' + port
+    print(f"ip {get_ip()}")
+    print(f"MASTER_ADDR {addr}")
+    print(f"port {port}")
+    print(f"world_size {os.environ['WORLD_SIZE']}")
+    print(f"rank {os.environ['RANK']}")
+    print(f"local_rank {os.environ['LOCAL_RANK']}")
+    print(f'distributed init (rank {args.rank}): {args.dist_url}')
+    print(f"addr: {host_addr_full}")
+    
+    torch.distributed.init_process_group(backend=args.dist_backend, init_method=host_addr_full,
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)
